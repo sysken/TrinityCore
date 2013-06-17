@@ -302,7 +302,7 @@ public:
                 }
             }
         }
-	};
+    };
 
     CreatureAI* GetAI(Creature* creature) const
     {
@@ -349,10 +349,10 @@ public:
         }
     };
 
-	CreatureAI* GetAI(Creature* creature) const
-	{
+    CreatureAI* GetAI(Creature* creature) const
+    {
         return new npc_player_one_unitsAI(creature);
-	}
+    }
 };
 
 class npc_player_two_units : public CreatureScript
@@ -369,10 +369,10 @@ public:
         }
     };
 
-	CreatureAI* GetAI(Creature* creature) const
-	{
+    CreatureAI* GetAI(Creature* creature) const
+    {
         return new npc_player_two_unitsAI(creature);
-	}
+    }
 };
 
 void AddSC_game_thing()
