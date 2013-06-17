@@ -64,15 +64,15 @@ public:
 
     bool OnGossipHello(Player* player, Creature* creature)
     {
-		if (taken == 0)
-		{
-			PlayerDataContainer[player->GetGUID()].position = 1;
-			PlayerDataContainer[player->GetGUID()].resources = 20;
-			PlayerDataContainer[player->GetGUID()].score = 0;
-			ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
-			taken++;
-			return false;
-		}
+        if (taken == 0)
+        {
+            PlayerDataContainer[player->GetGUID()].position = 1;
+            PlayerDataContainer[player->GetGUID()].resources = 20;
+            PlayerDataContainer[player->GetGUID()].score = 0;
+            ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
+            taken++;
+            return false;
+        }
 
         if (IsPlayerActive(player->GetGUID(), 1))
         {
@@ -84,9 +84,9 @@ public:
         }
         else
         {
-			player->GetSession()->SendNotification("The battle hasn't started or you aren't allowed to gossip with me!");
-			player->CLOSE_GOSSIP_MENU();
-			return false;
+            player->GetSession()->SendNotification("The battle hasn't started or you aren't allowed to gossip with me!");
+            player->CLOSE_GOSSIP_MENU();
+            return false;
         }
         player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
         player->SEND_GOSSIP_MENU(1, creature->GetGUID());
@@ -94,7 +94,7 @@ public:
     }
 
     bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions)
-	{
+    {
         player->PlayerTalkClass->ClearMenus();
         npc_player_oneAI* gameAI = CAST_AI(npc_player_oneAI, creature->GetAI());
 
@@ -104,7 +104,7 @@ public:
             return false;
         }
 
-		if (actions == GOSSIP_ACTION_INFO_DEF+1)
+        if (actions == GOSSIP_ACTION_INFO_DEF+1)
             gameAI->Queue[NPC_DEATH_DRAGON] = 3;
         else if (actions == GOSSIP_ACTION_INFO_DEF+2)
         {
@@ -129,23 +129,21 @@ public:
         npc_player_oneAI(Creature* creature) : ScriptedAI(creature) { }
 
         uint32 gameTimer;
-		bool hasStarted;
         std::map<uint32, uint16> Queue; // [Entry] - [Size]
 
-		void Reset()
-		{
-			gameTimer = 1000;
-			hasStarted = false;
-		}
+        void Reset()
+        {
+            gameTimer = 1000;
+        }
 
         void UpdateAI(uint32 diff)
         {
             if (gameTimer <= diff)
-			{
-				if (PlayerDataContainer.size() == 2)
+            {
+                if (PlayerDataContainer.size() == 2)
                     SpawnCreatureInQueue(); // Will spawn a random creature in the queue
                 gameTimer = urand(6000, 13000);
-			}
+            }
             else
                 gameTimer -= diff;
         }
@@ -169,19 +167,19 @@ public:
         // Spawns a random unit from the queue
         void SpawnCreatureInQueue()
         {
-			int i = 0;
-			if (Queue.size() > 0)
-			{
-				for (std::map<uint32, uint16>::const_iterator itr = Queue.begin(); itr != Queue.end(); ++itr)
-				{
-					if (i > 0)
-						continue;
+            int i = 0;
+            if (Queue.size() > 0)
+            {
+                for (std::map<uint32, uint16>::const_iterator itr = Queue.begin(); itr != Queue.end(); ++itr)
+                {
+                    if (i > 0)
+                        continue;
 
-					me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
-				    UpdateCreatureQueueSize(itr->first);
-					i++;
-				}
-			}
+                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
+                    UpdateCreatureQueueSize(itr->first);
+                    i++;
+                }
+            }
         }
     };
 
@@ -194,48 +192,48 @@ public:
 class npc_player_two : public CreatureScript
 {
 public:
-	npc_player_two() : CreatureScript("npc_player_two") { }
+    npc_player_two() : CreatureScript("npc_player_two") { }
 
-	bool OnGossipHello(Player* player, Creature* creature)
-	{
-		if (taken == 1) // If player one started, player 2 can start
-		{
-			PlayerDataContainer[player->GetGUID()].position = 2;
-			PlayerDataContainer[player->GetGUID()].resources = 20;
-			PlayerDataContainer[player->GetGUID()].score = 0;
-			ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
-			player->CLOSE_GOSSIP_MENU();
-			taken++;
-			return false;
-		}
-		else if (taken == 2)
-		{
-		    if (IsPlayerActive(player->GetGUID(), 2))
-		    {
-			    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [4]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
-			    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
-			    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Mini Dragon [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
-			    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
-		    }
-		    else
-		    {
-			    player->GetSession()->SendNotification("The battle hasn't started or you aren't allowed to gossip with me!");
-			    return false;
-		    }
-		}
-		else
-		{
-			player->GetSession()->SendNotification("You must wait for player 1!");
-			return false;
-		}
-		player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
-		player->SEND_GOSSIP_MENU(1, creature->GetGUID());
-		return true;
-	}
+    bool OnGossipHello(Player* player, Creature* creature)
+    {
+        if (taken == 1) // If player one started, player 2 can start
+        {
+            PlayerDataContainer[player->GetGUID()].position = 2;
+            PlayerDataContainer[player->GetGUID()].resources = 20;
+            PlayerDataContainer[player->GetGUID()].score = 0;
+            ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
+            player->CLOSE_GOSSIP_MENU();
+            taken++;
+            return false;
+        }
+        else if (taken == 2)
+        {
+            if (IsPlayerActive(player->GetGUID(), 2))
+            {
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [4]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Mini Dragon [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
+            }
+            else
+            {
+                player->GetSession()->SendNotification("The battle hasn't started or you aren't allowed to gossip with me!");
+                return false;
+            }
+        }
+        else
+        {
+            player->GetSession()->SendNotification("You must wait for player 1!");
+            return false;
+        }
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
+        player->SEND_GOSSIP_MENU(1, creature->GetGUID());
+        return true;
+    }
 
-	bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions)
-	{
-		player->PlayerTalkClass->ClearMenus();
+    bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions)
+    {
+        player->PlayerTalkClass->ClearMenus();
         npc_player_twoAI* gameAI = CAST_AI(npc_player_twoAI, creature->GetAI());
 
         if (gameAI->Queue.size() == 5) // Don't want too many out there
@@ -243,20 +241,20 @@ public:
             player->GetSession()->SendNotification("Exceeded queue size!");
             return false;
         }
-		return true;
+        return true;
 	}
 
 	struct npc_player_twoAI : public ScriptedAI
 	{
-		npc_player_twoAI(Creature* creature) : ScriptedAI(creature) { }
+        npc_player_twoAI(Creature* creature) : ScriptedAI(creature) { }
 
-		uint32 gameTimer;
-		std::map<uint32, uint16> Queue; // [Entry] - [Size]
+        uint32 gameTimer;
+        std::map<uint32, uint16> Queue; // [Entry] - [Size]
 
-		void Reset()
-		{
-			gameTimer = urand(6000, 13000);
-		}
+        void Reset()
+        {
+            gameTimer = urand(6000, 13000);
+        }
 
         void UpdateAI(uint32 diff)
         {
@@ -290,26 +288,26 @@ public:
         // Spawns a random unit from the queue
         void SpawnCreatureInQueue()
         {
-			int i = 0;
-			if (Queue.size() > 0)
-			{
-				for (std::map<uint32, uint16>::const_iterator itr = Queue.begin(); itr != Queue.end(); ++itr)
-				{
-					if (i > 0)
-						continue;
+            int i = 0;
+            if (Queue.size() > 0)
+            {
+                for (std::map<uint32, uint16>::const_iterator itr = Queue.begin(); itr != Queue.end(); ++itr)
+                {
+                    if (i > 0)
+                        continue;
 
-					me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
-				    UpdateCreatureQueueSize(itr->first);
-					i++;
-				}
-			}
+                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
+                    UpdateCreatureQueueSize(itr->first);
+                    i++;
+                }
+            }
         }
 	};
 
-	CreatureAI* GetAI(Creature* creature) const
-	{
-		return new npc_player_twoAI(creature);
-	}
+    CreatureAI* GetAI(Creature* creature) const
+    {
+        return new npc_player_twoAI(creature);
+    }
 };
 
 class npc_player_one_units : public CreatureScript
@@ -317,43 +315,43 @@ class npc_player_one_units : public CreatureScript
 public:
 	npc_player_one_units() : CreatureScript("npc_player_one_units") { }
 
-	struct npc_player_one_unitsAI : public ScriptedAI
-	{
-		npc_player_one_unitsAI(Creature* creature) : ScriptedAI(creature) { }
+    struct npc_player_one_unitsAI : public ScriptedAI
+    {
+        npc_player_one_unitsAI(Creature* creature) : ScriptedAI(creature) { }
 
-		uint32 moveTimer;
-		uint32 enemyNearTimer;
+        uint32 moveTimer;
+        uint32 enemyNearTimer;
 
-		void Reset()
-		{
-			moveTimer = 1000;
-			enemyNearTimer = 1000;
+        void Reset()
+        {
+            moveTimer = 1000;
+            enemyNearTimer = 1000;
 
-			if (me->GetEntry() == NPC_DEFENSE_TOWER_SPIKE)
-				SetCombatMovement(false);
-		}
+            if (me->GetEntry() == NPC_DEFENSE_TOWER_SPIKE)
+                SetCombatMovement(false);
+        }
 
-		void UpdateAI(uint32 diff)
-		{
-			if (!UpdateVictim())
-				me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY(), creatureSpawns[4].GetPositionZ());
-			else
-				me->GetMotionMaster()->Clear();
+        void UpdateAI(uint32 diff)
+        {
+            if (!UpdateVictim())
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY(), creatureSpawns[4].GetPositionZ());
+            else
+                me->GetMotionMaster()->Clear();
 
-			if (enemyNearTimer <= diff)
-			{
-				if (Unit* unit = me->FindNearestCreature(NPC_GOSSIP_PLAYER_TWO, 10.0f, true))
-					me->GetAI()->AttackStart(unit);
-				enemyNearTimer = 1000;
-			}
-			else
-				enemyNearTimer -= diff;
-		}
-	};
+            if (enemyNearTimer <= diff)
+            {
+                if (Unit* unit = me->FindNearestCreature(NPC_GOSSIP_PLAYER_TWO, 10.0f, true))
+                    me->GetAI()->AttackStart(unit);
+                enemyNearTimer = 1000;
+            }
+            else
+                enemyNearTimer -= diff;
+        }
+    };
 
 	CreatureAI* GetAI(Creature* creature) const
 	{
-		return new npc_player_one_unitsAI(creature);
+        return new npc_player_one_unitsAI(creature);
 	}
 };
 
@@ -362,25 +360,25 @@ class npc_player_two_units : public CreatureScript
 public:
 	npc_player_two_units() : CreatureScript("npc_player_two_units") { }
 
-	struct npc_player_two_unitsAI : public ScriptedAI
-	{
-		npc_player_two_unitsAI(Creature* creature) : ScriptedAI(creature) { }
+    struct npc_player_two_unitsAI : public ScriptedAI
+    {
+        npc_player_two_unitsAI(Creature* creature) : ScriptedAI(creature) { }
 
-		void Reset()
-		{
-		}
-	};
+        void Reset()
+        {
+        }
+    };
 
 	CreatureAI* GetAI(Creature* creature) const
 	{
-		return new npc_player_two_unitsAI(creature);
+        return new npc_player_two_unitsAI(creature);
 	}
 };
 
 void AddSC_game_thing()
 {
-	new npc_player_one;
-	new npc_player_two;
-	new npc_player_one_units;
-	new npc_player_two_units;
+    new npc_player_one;
+    new npc_player_two;
+    new npc_player_one_units;
+    new npc_player_two_units;
 }
