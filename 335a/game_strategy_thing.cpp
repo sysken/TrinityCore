@@ -21,6 +21,15 @@ enum NpcIds
     NPC_TOTEM_TOWER                  = 65011  // Player 2
 };
 
+enum SpellIds
+{
+    SPELL_RENEW                      = 37260,
+    SPELL_SHADOW_BOLT                = 49084,
+    SPELL_ICE_SPIKE                  = 57454,
+    SPELL_HOLY_BOLT                  = 31759,
+    SPELL_LIGHTNING_BOLT             = 36152,
+};
+
 struct PlayerData
 {
     uint32 resources;
@@ -37,10 +46,12 @@ static Position creatureSpawns[] =
     { -7064.366f, -2093.279f, 390.935547f, 0.753551f }, // GOSSIP 1 DEFENSE SPAWN 2
     { -7058.394f, -2044.351f, 390.935303f, 4.735566f }, // MAIN (GOSSIP) 2
     { -7058.321f, -2047.497f, 390.935303f, 4.735566f }, // GOSSIP 2 UNIT SPAWN
+    { -7065.684f, -2073.248f, 390.936493f, 0.095714f }, // PLAYER ATTACKED MINION(S)
 };
 
 std::map<uint64, PlayerData> PlayerDataContainer;
 static int taken = 0;
+static int eventOver = true;
 
 bool IsPlayerActive(uint64 guid, uint8 pos)
 {
@@ -63,14 +74,14 @@ class npc_player_one : public CreatureScript
 public:
     npc_player_one() : CreatureScript("npc_player_one") { }
 
-    bool OnGossipHello(Player* player, Creature* creature)
+    bool OnGossipHello(Player* player, Creature* creature) OVERRIDE
     {
         if (taken == 0)
         {
             PlayerDataContainer[player->GetGUID()].position = 1;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
-            creature->setFaction(player->GetTeam() ? HORDE : ALLIANCE);
+            creature->setFaction(player->getFaction());
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             taken++;
             return false;
@@ -78,9 +89,9 @@ public:
 
         if (IsPlayerActive(player->GetGUID(), 1))
         {
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Death Dragon [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Orc [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Skeleton [1]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Beast [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Troll [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Crypto [1]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
             player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
             player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
         }
@@ -90,12 +101,12 @@ public:
             player->CLOSE_GOSSIP_MENU();
             return false;
         }
-        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+99);
         player->SEND_GOSSIP_MENU(1, creature->GetGUID());
         return true;
     }
 
-    bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions)
+    bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions) OVERRIDE
     {
         player->PlayerTalkClass->ClearMenus();
         npc_player_oneAI* gameAI = CAST_AI(npc_player_oneAI, creature->GetAI());
@@ -107,20 +118,16 @@ public:
         }
 
         if (actions == GOSSIP_ACTION_INFO_DEF+1)
-            gameAI->Queue[NPC_DRAGON] = 3;
+            gameAI->Queue[NPC_UNDEAD_BEAST] = 2;
         else if (actions == GOSSIP_ACTION_INFO_DEF+2)
-        {
-        }
+            gameAI->Queue[NPC_UNDEAD_TROLL] = 2;
         else if (actions == GOSSIP_ACTION_INFO_DEF+3)
-        {
-        }
+            gameAI->Queue[NPC_UNDEAD_CRYPTO] = 1;
         else if (actions == GOSSIP_ACTION_INFO_DEF+4)
-        {
-        }
+            gameAI->Queue[NPC_DEFENSE_TOWER_SPIKE] = 1;
         else if (actions == GOSSIP_ACTION_INFO_DEF+5)
-        {
-        }
-        else if (actions == GOSSIP_ACTION_INFO_DEF+20)
+            gameAI->Queue[NPC_PLAYER_ONE_BOSS] = 1;
+        else if (actions == GOSSIP_ACTION_INFO_DEF+99)
             player->CLOSE_GOSSIP_MENU();
         player->CLOSE_GOSSIP_MENU();
         return true;
@@ -128,26 +135,65 @@ public:
 
     struct npc_player_oneAI : public ScriptedAI
     {
-        npc_player_oneAI(Creature* creature) : ScriptedAI(creature) { }
+        npc_player_oneAI(Creature* creature) : ScriptedAI(creature), summons(me) { }
 
         uint32 gameTimer;
+        uint32 shadowBoltTimer;
         std::map<uint32, uint16> Queue; // [Entry] - [Size]
 
-        void Reset()
+        void Reset() OVERRIDE
         {
             gameTimer = 1000;
+            shadowBoltTimer = 4000;
+            summons.DespawnAll();
         }
 
-        void UpdateAI(uint32 diff)
+        void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
+        {
+            if (attacker->GetTypeId() == TYPEID_PLAYER)
+            {
+                ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player One's minion!");
+                DoCast(me, SPELL_RENEW, false);
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+            }
+        }
+
+        void JustDied(Unit* /*killer*/) OVERRIDE
+        {
+            summons.DespawnAll();
+            me->setFaction(35);
+            eventOver = true;
+            PlayerDataContainer.clear();
+            taken = 0;
+        }
+
+        void JustSummoned(Creature* summoned)
+        {
+            summons.Summon(summoned);
+        }
+
+        void UpdateAI(uint32 diff) OVERRIDE
         {
             if (gameTimer <= diff)
             {
+                if (me->IsAlive() && eventOver)
+                    summons.DespawnAll();
                 if (PlayerDataContainer.size() == 2)
                     SpawnCreatureInQueue(); // Will spawn a random creature in the queue
                 gameTimer = urand(6000, 13000);
             }
             else
                 gameTimer -= diff;
+            if (!UpdateVictim())
+                return;
+
+            if (shadowBoltTimer <= diff)
+            {
+                DoCast(me->GetVictim(), SPELL_SHADOW_BOLT, true);
+                shadowBoltTimer = 4000;
+            }
+            else
+                shadowBoltTimer -= diff;
         }
 
         void UpdateCreatureQueueSize(uint32 entry)
@@ -177,17 +223,66 @@ public:
                     if (i > 0)
                         continue;
 
-                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
+                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY() + 5, creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
                     UpdateCreatureQueueSize(itr->first);
                     i++;
                 }
             }
         }
+    private:
+        SummonList summons;
     };
 
-    CreatureAI* GetAI(Creature* creature) const
+    CreatureAI* GetAI(Creature* creature) const OVERRIDE
     {
         return new npc_player_oneAI(creature);
+    }
+};
+
+class npc_player_one_units : public CreatureScript
+{
+public:
+	npc_player_one_units() : CreatureScript("npc_player_one_units") { }
+
+    struct npc_player_one_unitsAI : public ScriptedAI
+    {
+        npc_player_one_unitsAI(Creature* creature) : ScriptedAI(creature) { }
+
+        void Reset() OVERRIDE
+        {
+        }
+
+        void JustDied(Unit* /*killer*/) OVERRIDE
+        {
+            IncrementResources(urand(10, 20), 2);
+        }
+
+        void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
+        {
+            if (attacker->GetTypeId() == TYPEID_PLAYER)
+            {
+                ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player One's minion!");
+                DoCast(me, SPELL_RENEW, false);
+                me->AI()->Reset();
+                me->AttackStop();
+                me->SetTarget(0);
+                me->GetMotionMaster()->Clear();
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY() - 5, creatureSpawns[4].GetPositionZ());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+            }
+        }
+
+        void UpdateAI(uint32 diff) OVERRIDE
+        {
+            if (!UpdateVictim())
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY(), creatureSpawns[4].GetPositionZ());
+            DoMeleeAttackIfReady();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const OVERRIDE
+    {
+        return new npc_player_one_unitsAI(creature);
     }
 };
 
@@ -196,27 +291,29 @@ class npc_player_two : public CreatureScript
 public:
     npc_player_two() : CreatureScript("npc_player_two") { }
 
-    bool OnGossipHello(Player* player, Creature* creature)
+    bool OnGossipHello(Player* player, Creature* creature) OVERRIDE
     {
         if (taken == 1) // If player one started, player 2 can start
         {
             PlayerDataContainer[player->GetGUID()].position = 2;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
-            creature->setFaction(player->GetTeam() ? HORDE : ALLIANCE);
+            creature->setFaction(player->getFaction());
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             player->CLOSE_GOSSIP_MENU();
             taken++;
+            eventOver = false;
             return false;
         }
         else if (taken == 2)
         {
             if (IsPlayerActive(player->GetGUID(), 2))
             {
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [4]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Mini Dragon [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Dragon [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
             }
             else
             {
@@ -229,12 +326,12 @@ public:
             player->GetSession()->SendNotification("You must wait for player 1!");
             return false;
         }
-        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+20);
+        player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Nevermind..", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+99);
         player->SEND_GOSSIP_MENU(1, creature->GetGUID());
         return true;
     }
 
-    bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions)
+    bool OnGossipSelect(Player* player, Creature* creature, uint32 /* sender */, uint32 actions) OVERRIDE
     {
         player->PlayerTalkClass->ClearMenus();
         npc_player_twoAI* gameAI = CAST_AI(npc_player_twoAI, creature->GetAI());
@@ -244,32 +341,84 @@ public:
             player->GetSession()->SendNotification("Exceeded queue size!");
             return false;
         }
+
+        if (actions == GOSSIP_ACTION_INFO_DEF+1)
+            gameAI->Queue[NPC_VIKING] = 3;
+        else if (actions == GOSSIP_ACTION_INFO_DEF+2)
+            gameAI->Queue[NPC_ARMORED_VIKING] = 2;
+        else if (actions == GOSSIP_ACTION_INFO_DEF+3)
+            gameAI->Queue[NPC_DRAGON] = 2;          
+        else if (actions == GOSSIP_ACTION_INFO_DEF+4)
+            gameAI->Queue[NPC_TOTEM_TOWER] = 1;
+        else if (actions == GOSSIP_ACTION_INFO_DEF+5)
+            gameAI->Queue[NPC_PLAYER_TWO_BOSS] = 1;
+        else if (actions == GOSSIP_ACTION_INFO_DEF+99)
+            player->CLOSE_GOSSIP_MENU();
+        player->CLOSE_GOSSIP_MENU();
         return true;
 	}
 
 	struct npc_player_twoAI : public ScriptedAI
 	{
-        npc_player_twoAI(Creature* creature) : ScriptedAI(creature) { }
+        npc_player_twoAI(Creature* creature) : ScriptedAI(creature), summons(me) { }
 
         uint32 gameTimer;
+        uint32 lightningBoltTimer;
         std::map<uint32, uint16> Queue; // [Entry] - [Size]
 
-        void Reset()
+        void Reset() OVERRIDE
         {
             gameTimer = urand(6000, 13000);
+            lightningBoltTimer = 4000;
+            summons.DespawnAll();
         }
 
-        void UpdateAI(uint32 diff)
+        void JustDied(Unit* /*killer*/) OVERRIDE
         {
-            if (PlayerDataContainer.size() < 2)
-                return;
-            else
-                gameTimer = urand(6000, 13000);
+            summons.DespawnAll();
+            eventOver = true;
+            me->setFaction(35);
+            PlayerDataContainer.clear();
+            taken = 0;
+        }
 
+        void JustSummon(Creature* summoned)
+        {
+            summons.Summon(summoned);
+        }
+
+        void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
+        {
+            if (attacker->GetTypeId() == TYPEID_PLAYER)
+            {
+                ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player Two's minion!");
+                DoCast(me, SPELL_RENEW, false);
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY() + 5, creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+            }
+        }
+
+        void UpdateAI(uint32 diff) OVERRIDE
+        {
             if (gameTimer <= diff)
-                SpawnCreatureInQueue(); // Will spawn a random creature in the queue
+            {
+                if (me->IsAlive() && eventOver)
+                    summons.DespawnAll();
+                if (PlayerDataContainer.size() == 2)
+                    SpawnCreatureInQueue(); // Will spawn a random creature in the queue
+                gameTimer = urand(6000, 13000);
+            }
             else
                 gameTimer -= diff;
+            if (!UpdateVictim())
+                return;
+
+            if (lightningBoltTimer <= diff)
+            {
+                DoCast(me->GetVictim(), SPELL_LIGHTNING_BOLT, true);
+                lightningBoltTimer = 4000;
+            }
+            else
+                lightningBoltTimer -= diff;
         }
 
         void UpdateCreatureQueueSize(uint32 entry)
@@ -299,62 +448,19 @@ public:
                     if (i > 0)
                         continue;
 
-                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY(), creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN, 0);
+                    me->SummonCreature(itr->first, creatureSpawns[5].GetPositionX(), creatureSpawns[5].GetPositionY(), creatureSpawns[5].GetPositionZ(), creatureSpawns[5].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
                     UpdateCreatureQueueSize(itr->first);
                     i++;
                 }
             }
         }
+    private:
+        SummonList summons;
     };
 
-    CreatureAI* GetAI(Creature* creature) const
+    CreatureAI* GetAI(Creature* creature) const OVERRIDE
     {
         return new npc_player_twoAI(creature);
-    }
-};
-
-class npc_player_one_units : public CreatureScript
-{
-public:
-	npc_player_one_units() : CreatureScript("npc_player_one_units") { }
-
-    struct npc_player_one_unitsAI : public ScriptedAI
-    {
-        npc_player_one_unitsAI(Creature* creature) : ScriptedAI(creature) { }
-
-        uint32 moveTimer;
-        uint32 enemyNearTimer;
-
-        void Reset()
-        {
-            moveTimer = 1000;
-            enemyNearTimer = 1000;
-
-            if (me->GetEntry() == NPC_DEFENSE_TOWER_SPIKE)
-                SetCombatMovement(false);
-        }
-
-        void UpdateAI(uint32 diff)
-        {
-            if (!UpdateVictim())
-                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY(), creatureSpawns[4].GetPositionZ());
-            else
-                me->GetMotionMaster()->Clear();
-
-            if (enemyNearTimer <= diff)
-            {
-                if (Unit* unit = me->FindNearestCreature(NPC_GOSSIP_PLAYER_TWO, 10.0f, true))
-                    me->GetAI()->AttackStart(unit);
-                enemyNearTimer = 1000;
-            }
-            else
-                enemyNearTimer -= diff;
-        }
-    };
-
-    CreatureAI* GetAI(Creature* creature) const
-    {
-        return new npc_player_one_unitsAI(creature);
     }
 };
 
@@ -367,12 +473,39 @@ public:
     {
         npc_player_two_unitsAI(Creature* creature) : ScriptedAI(creature) { }
 
-        void Reset()
+        void Reset() OVERRIDE
         {
+        }
+
+        void JustDied(Unit* /*killer*/) OVERRIDE
+        {
+            IncrementResources(urand(10, 20), 1);
+        }
+
+        void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
+        {
+            if (attacker->GetTypeId() == TYPEID_PLAYER)
+            {
+                ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player Two's minion!");
+                DoCast(me, SPELL_RENEW, false);
+                me->AI()->Reset();
+                me->AttackStop();
+                me->SetTarget(0);
+                me->GetMotionMaster()->Clear();
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY() - 5, creatureSpawns[0].GetPositionZ());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+            }
+        }
+
+        void UpdateAI(uint32 diff) OVERRIDE
+        {
+            if (!UpdateVictim())
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY(), creatureSpawns[0].GetPositionZ());
+            DoMeleeAttackIfReady();
         }
     };
 
-    CreatureAI* GetAI(Creature* creature) const
+    CreatureAI* GetAI(Creature* creature) const OVERRIDE
     {
         return new npc_player_two_unitsAI(creature);
     }

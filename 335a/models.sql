@@ -1,0 +1,1 @@
+INSERT INTO `creature_model_info` VALUES ('31001', '2', '1.25', '2', '0');
