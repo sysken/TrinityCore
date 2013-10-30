@@ -7,9 +7,9 @@
 */
 enum NpcIds
 {
-    NPC_ARMORED_ORC                  = 65000, // Player 1
+    NPC_UNDEAD_BEAST                 = 65000, // Player 1
     NPC_GOSSIP_PLAYER_ONE            = 65001, // Player 1
-    NPC_ARMORED_SKELETON             = 65002, // Player 1
+    NPC_UNDEAD_TROLL                 = 65002, // Player 1
     NPC_DEFENSE_TOWER_SPIKE          = 65003, // Player 1
     NPC_GOSSIP_PLAYER_TWO            = 65004, // Player 2
     NPC_PLAYER_TWO_BOSS              = 65005, // Player 2
@@ -17,7 +17,8 @@ enum NpcIds
     NPC_ARMORED_VIKING               = 65007, // Player 2
     NPC_DRAGON                       = 65008, // Player 2
     NPC_PLAYER_ONE_BOSS              = 65009, // Player 1
-    NPC_DEATH_DRAGON                 = 65010, // Player 1
+    NPC_UNDEAD_CRYPTO                = 65010, // Player 1
+    NPC_TOTEM_TOWER                  = 65011  // Player 2
 };
 
 struct PlayerData
@@ -69,6 +70,7 @@ public:
             PlayerDataContainer[player->GetGUID()].position = 1;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
+            creature->setFaction(player->GetTeam() ? HORDE : ALLIANCE);
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             taken++;
             return false;
@@ -98,7 +100,7 @@ public:
         player->PlayerTalkClass->ClearMenus();
         npc_player_oneAI* gameAI = CAST_AI(npc_player_oneAI, creature->GetAI());
 
-        if (gameAI->Queue.size() == 4) // Don't want too many out there
+        if (gameAI->Queue.size() == 3) // Don't want too many out there
         {
             player->GetSession()->SendNotification("Exceeded queue size!");
             return false;
@@ -201,6 +203,7 @@ public:
             PlayerDataContainer[player->GetGUID()].position = 2;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
+            creature->setFaction(player->GetTeam() ? HORDE : ALLIANCE);
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             player->CLOSE_GOSSIP_MENU();
             taken++;
@@ -236,7 +239,7 @@ public:
         player->PlayerTalkClass->ClearMenus();
         npc_player_twoAI* gameAI = CAST_AI(npc_player_twoAI, creature->GetAI());
 
-        if (gameAI->Queue.size() == 5) // Don't want too many out there
+        if (gameAI->Queue.size() == 3) // Don't want too many out there
         {
             player->GetSession()->SendNotification("Exceeded queue size!");
             return false;
