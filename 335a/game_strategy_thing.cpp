@@ -107,7 +107,7 @@ public:
         }
 
         if (actions == GOSSIP_ACTION_INFO_DEF+1)
-            gameAI->Queue[NPC_DEATH_DRAGON] = 3;
+            gameAI->Queue[NPC_DRAGON] = 3;
         else if (actions == GOSSIP_ACTION_INFO_DEF+2)
         {
         }
