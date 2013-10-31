@@ -51,7 +51,7 @@ static Position creatureSpawns[] =
 
 std::map<uint64, PlayerData> PlayerDataContainer;
 static int taken = 0;
-static int eventOver = true;
+static bool eventOver = true;
 
 bool IsPlayerActive(uint64 guid, uint8 pos)
 {
@@ -62,11 +62,14 @@ bool IsPlayerActive(uint64 guid, uint8 pos)
     return true;
 }
 
-void IncrementResources(uint32 resources, uint8 pos)
+void IncrementStats(uint32 resources, uint32 score, uint8 pos)
 {
     for (std::map<uint64, PlayerData>::const_iterator itr = PlayerDataContainer.begin(); itr != PlayerDataContainer.end(); ++itr)
         if (itr->second.position == pos)
+        {
+            PlayerDataContainer[itr->first].score += score;
             PlayerDataContainer[itr->first].resources += resources;
+        }
 }
 
 class npc_player_one : public CreatureScript
@@ -89,11 +92,18 @@ public:
 
         if (IsPlayerActive(player->GetGUID(), 1))
         {
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Beast [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Troll [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Crypto [1]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
-            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Beast [2][10R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Troll [2][25R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Crypto [1][40R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower[5R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss[100R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
+            std::map<uint64, PlayerData>::iterator itr = PlayerDataContainer.find(player->GetGUID());
+            if (itr != PlayerDataContainer.end())
+            {
+                char msg [25];
+                snprintf(msg, 25, "Resources: %u \n Score: %u", itr->second.resources, itr->second.score);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
+            }
         }
         else
         {
@@ -118,15 +128,55 @@ public:
         }
 
         if (actions == GOSSIP_ACTION_INFO_DEF+1)
-            gameAI->Queue[NPC_UNDEAD_BEAST] = 2;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 10)
+            {
+                gameAI->Queue[NPC_UNDEAD_BEAST] = 2;
+                PlayerDataContainer[player->GetGUID()].resources -= 10;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+2)
-            gameAI->Queue[NPC_UNDEAD_TROLL] = 2;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 25)
+            {
+                gameAI->Queue[NPC_UNDEAD_TROLL] = 2;
+                PlayerDataContainer[player->GetGUID()].resources -= 25;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+3)
-            gameAI->Queue[NPC_UNDEAD_CRYPTO] = 1;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 40)
+            {
+                gameAI->Queue[NPC_UNDEAD_CRYPTO] = 1;
+                PlayerDataContainer[player->GetGUID()].resources -= 40;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+4)
-            gameAI->Queue[NPC_DEFENSE_TOWER_SPIKE] = 1;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 5)
+            {
+                gameAI->Queue[NPC_DEFENSE_TOWER_SPIKE] = 1;
+                PlayerDataContainer[player->GetGUID()].resources -= 5;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+5)
-            gameAI->Queue[NPC_PLAYER_ONE_BOSS] = 1;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 100)
+            {
+                gameAI->Queue[NPC_PLAYER_ONE_BOSS] = 1;
+                PlayerDataContainer[player->GetGUID()].resources -= 100;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+99)
             player->CLOSE_GOSSIP_MENU();
         player->CLOSE_GOSSIP_MENU();
@@ -254,7 +304,7 @@ public:
 
         void JustDied(Unit* /*killer*/) OVERRIDE
         {
-            IncrementResources(urand(10, 20), 2);
+            IncrementStats(urand(5, 20), urand(5, 15), 2);
         }
 
         void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
@@ -309,11 +359,19 @@ public:
         {
             if (IsPlayerActive(player->GetGUID(), 2))
             {
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [3]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Dragon [2]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Viking [3][10R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+1);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Armored Viking [2][25R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+2);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Dragon [2][40R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower[5R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss[100R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "----------Stats-------------", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+100);
+                std::map<uint64, PlayerData>::iterator itr = PlayerDataContainer.find(player->GetGUID());
+                if (itr != PlayerDataContainer.end())
+                {
+                    char msg [25];
+                    snprintf(msg, 25, "Resources: %u \n Score: %u", itr->second.resources, itr->second.score);
+                    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
+                }
             }
             else
             {
@@ -343,15 +401,55 @@ public:
         }
 
         if (actions == GOSSIP_ACTION_INFO_DEF+1)
-            gameAI->Queue[NPC_VIKING] = 3;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 10)
+            {
+                gameAI->Queue[NPC_VIKING] = 3;
+                PlayerDataContainer[player->GetGUID()].resources -= 10;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+2)
-            gameAI->Queue[NPC_ARMORED_VIKING] = 2;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 25)
+            {
+                gameAI->Queue[NPC_ARMORED_VIKING] = 2;
+                PlayerDataContainer[player->GetGUID()].resources -= 25;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+3)
-            gameAI->Queue[NPC_DRAGON] = 2;          
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 40)
+            {
+                gameAI->Queue[NPC_DRAGON] = 2;
+                PlayerDataContainer[player->GetGUID()].resources -= 40;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+4)
-            gameAI->Queue[NPC_TOTEM_TOWER] = 1;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 5)
+            {
+                gameAI->Queue[NPC_TOTEM_TOWER] = 1;
+                PlayerDataContainer[player->GetGUID()].resources -= 5;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+5)
-            gameAI->Queue[NPC_PLAYER_TWO_BOSS] = 1;
+        {
+            if (PlayerDataContainer[player->GetGUID()].resources >= 100)
+            {
+                gameAI->Queue[NPC_PLAYER_TWO_BOSS] = 1;
+                PlayerDataContainer[player->GetGUID()].resources -= 100;
+            }
+            else
+                player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
+        }
         else if (actions == GOSSIP_ACTION_INFO_DEF+99)
             player->CLOSE_GOSSIP_MENU();
         player->CLOSE_GOSSIP_MENU();
@@ -479,7 +577,7 @@ public:
 
         void JustDied(Unit* /*killer*/) OVERRIDE
         {
-            IncrementResources(urand(10, 20), 1);
+            IncrementStats(urand(5, 20), urand(5, 15), 1);
         }
 
         void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
