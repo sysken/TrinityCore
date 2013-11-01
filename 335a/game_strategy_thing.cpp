@@ -34,6 +34,7 @@ struct PlayerData
 {
     uint32 resources;
     uint32 score;
+    uint8 towers;
     uint8 position;
 };
 
@@ -42,18 +43,17 @@ static Position creatureSpawns[] =
 	/*   PLAYER       NPC        SPAWNS     */
     { -7057.590f, -2098.294f, 391.096893f, 1.586117f }, // MAIN (GOSSIP) 1
     { -7057.604f, -2095.022f, 390.935669f, 1.578219f }, // GOSSIP 1 UNIT SPAWN
-    { -7047.958f, -2094.364f, 390.935669f, 2.308640f }, // GOSSIP 1 DEFENSE SPAWN
-    { -7064.366f, -2093.279f, 390.935547f, 0.753551f }, // GOSSIP 1 DEFENSE SPAWN 2
     { -7058.394f, -2044.351f, 390.935303f, 4.735566f }, // MAIN (GOSSIP) 2
     { -7058.321f, -2047.497f, 390.935303f, 4.735566f }, // GOSSIP 2 UNIT SPAWN
-    { -7065.684f, -2073.248f, 390.936493f, 0.095714f }, // PLAYER ATTACKED MINION(S)
+    { -7057.714f, -2094.326f, 390.935333f, 1.603884f }, // PLAYER 1 DEFENSE SPAWN
+    { -7061.667f, -2045.553f, 390.935333f, 5.355237f }, // PLAYER 2 DEFENSE SPAWN
 };
 
 std::map<uint64, PlayerData> PlayerDataContainer;
 static int taken = 0;
 static bool eventOver = true;
 
-bool IsPlayerActive(uint64 guid, uint8 pos)
+bool IsPlayerActive(uint64 guid, uint8 pos) // Checks if a player is in the map, if not, don't allow to show gossip with the player
 {
     std::map<uint64, PlayerData>::iterator itr = PlayerDataContainer.find(guid);
     if (itr != PlayerDataContainer.end())
@@ -62,7 +62,7 @@ bool IsPlayerActive(uint64 guid, uint8 pos)
     return true;
 }
 
-void IncrementStats(uint32 resources, uint32 score, uint8 pos)
+void IncrementPlayerData(uint32 resources, uint32 score, uint8 pos) // Increments Data (score & resources)
 {
     for (std::map<uint64, PlayerData>::const_iterator itr = PlayerDataContainer.begin(); itr != PlayerDataContainer.end(); ++itr)
         if (itr->second.position == pos)
@@ -70,6 +70,22 @@ void IncrementStats(uint32 resources, uint32 score, uint8 pos)
             PlayerDataContainer[itr->first].score += score;
             PlayerDataContainer[itr->first].resources += resources;
         }
+}
+
+void RemoveTower(uint8 pos) // Removes a tower from the map
+{
+    for (std::map<uint64, PlayerData>::const_iterator itr = PlayerDataContainer.begin(); itr != PlayerDataContainer.end(); ++itr)
+        if (itr->second.position == pos)
+            PlayerDataContainer[itr->first].towers--;
+}
+
+bool CanSpawnTower(uint8 pos) // Checks if the player has 4 towers spawned, if so, don't allow to spawn anymore
+{
+    for (std::map<uint64, PlayerData>::const_iterator itr = PlayerDataContainer.begin(); itr != PlayerDataContainer.end(); ++itr)
+        if (itr->second.position == pos)
+            if (itr->second.towers < 5)
+                return true;
+    return false;
 }
 
 class npc_player_one : public CreatureScript
@@ -84,6 +100,7 @@ public:
             PlayerDataContainer[player->GetGUID()].position = 1;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
+            PlayerDataContainer[player->GetGUID()].towers = 0;
             creature->setFaction(player->getFaction());
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             taken++;
@@ -97,13 +114,10 @@ public:
             player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Undead Crypto [1][40R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+3);
             player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower[5R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
             player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss[100R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
-            std::map<uint64, PlayerData>::iterator itr = PlayerDataContainer.find(player->GetGUID());
-            if (itr != PlayerDataContainer.end())
-            {
-                char msg [25];
-                snprintf(msg, 25, "Resources: %u \n Score: %u", itr->second.resources, itr->second.score);
-                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
-            }
+            char msg [255];
+            snprintf(msg, 255, " Resources: %u \n Score: %u \n Towers Remaining: %u", PlayerDataContainer[player->GetGUID()].resources, PlayerDataContainer[player->GetGUID()].score, 
+            PlayerDataContainer[player->GetGUID()].towers);
+            player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
         }
         else
         {
@@ -161,8 +175,14 @@ public:
         {
             if (PlayerDataContainer[player->GetGUID()].resources >= 5)
             {
-                gameAI->Queue[NPC_DEFENSE_TOWER_SPIKE] = 1;
-                PlayerDataContainer[player->GetGUID()].resources -= 5;
+                if (CanSpawnTower(1))
+                {
+                    gameAI->Queue[NPC_DEFENSE_TOWER_SPIKE] = 1;
+                    PlayerDataContainer[player->GetGUID()].resources -= 5;
+                    PlayerDataContainer[player->GetGUID()].towers++;
+                }
+                else
+                    player->GetSession()->SendAreaTriggerMessage("Reached Max Tower Limit!");
             }
             else
                 player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
@@ -204,7 +224,7 @@ public:
             {
                 ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player One's minion!");
                 DoCast(me, SPELL_RENEW, false);
-                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[2].GetPositionX(), creatureSpawns[2].GetPositionY(), creatureSpawns[2].GetPositionZ(), creatureSpawns[2].GetOrientation());
             }
         }
 
@@ -273,7 +293,10 @@ public:
                     if (i > 0)
                         continue;
 
-                    me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY() + 5, creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
+                    if (itr->first == NPC_DEFENSE_TOWER_SPIKE)
+                        me->SummonCreature(itr->first, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY() + rand()%10, creatureSpawns[4].GetPositionZ(), creatureSpawns[4].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
+                    else
+                        me->SummonCreature(itr->first, creatureSpawns[1].GetPositionX(), creatureSpawns[1].GetPositionY() + 5, creatureSpawns[1].GetPositionZ(), creatureSpawns[1].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
                     UpdateCreatureQueueSize(itr->first);
                     i++;
                 }
@@ -298,13 +321,18 @@ public:
     {
         npc_player_one_unitsAI(Creature* creature) : ScriptedAI(creature) { }
 
+        uint32 timerIceSpike;
+
         void Reset() OVERRIDE
         {
+            timerIceSpike = urand(3000, 8000);
         }
 
         void JustDied(Unit* /*killer*/) OVERRIDE
         {
-            IncrementStats(urand(5, 20), urand(5, 15), 2);
+            IncrementPlayerData(urand(5, 20), urand(5, 15), 2);
+            if (me->GetEntry() == NPC_DEFENSE_TOWER_SPIKE)
+                RemoveTower(1);
         }
 
         void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
@@ -317,16 +345,31 @@ public:
                 me->AttackStop();
                 me->SetTarget(0);
                 me->GetMotionMaster()->Clear();
-                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY() - 5, creatureSpawns[4].GetPositionZ());
-                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[2].GetPositionX(), creatureSpawns[2].GetPositionY() - 5, creatureSpawns[2].GetPositionZ());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[2].GetPositionX(), creatureSpawns[2].GetPositionY(), creatureSpawns[2].GetPositionZ(), creatureSpawns[2].GetOrientation());
             }
         }
 
         void UpdateAI(uint32 diff) OVERRIDE
         {
-            if (!UpdateVictim())
-                me->GetMotionMaster()->MovePoint(0, creatureSpawns[4].GetPositionX(), creatureSpawns[4].GetPositionY(), creatureSpawns[4].GetPositionZ());
-            DoMeleeAttackIfReady();
+            if (!UpdateVictim() && me->GetEntry() != NPC_DEFENSE_TOWER_SPIKE)
+            {
+                me->GetMotionMaster()->MovePoint(0, creatureSpawns[2].GetPositionX(), creatureSpawns[2].GetPositionY(), creatureSpawns[2].GetPositionZ());
+                return;
+            }
+
+            if (me->GetEntry() == NPC_DEFENSE_TOWER_SPIKE)
+            {
+                if (timerIceSpike <= diff)
+                {
+                    DoCast(me->GetVictim(), SPELL_ICE_SPIKE, true);
+                    timerIceSpike = urand(3000, 8000);
+                }
+                else
+                    timerIceSpike -= diff;
+            }
+            if (me->GetEntry() != NPC_DEFENSE_TOWER_SPIKE)
+                DoMeleeAttackIfReady();
         }
     };
 
@@ -348,6 +391,7 @@ public:
             PlayerDataContainer[player->GetGUID()].position = 2;
             PlayerDataContainer[player->GetGUID()].resources = 20;
             PlayerDataContainer[player->GetGUID()].score = 0;
+            PlayerDataContainer[player->GetGUID()].towers = 0;
             creature->setFaction(player->getFaction());
             ChatHandler(player->GetSession()).SendSysMessage("You have been registered!");
             player->CLOSE_GOSSIP_MENU();
@@ -365,13 +409,10 @@ public:
                 player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Defense Tower[5R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+4);
                 player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "Boss[100R]", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+5);
                 player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, "----------Stats-------------", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+100);
-                std::map<uint64, PlayerData>::iterator itr = PlayerDataContainer.find(player->GetGUID());
-                if (itr != PlayerDataContainer.end())
-                {
-                    char msg [25];
-                    snprintf(msg, 25, "Resources: %u \n Score: %u", itr->second.resources, itr->second.score);
-                    player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
-                }
+                char msg [255];
+                snprintf(msg, 255, " Resources: %u \n Score: %u \n Towers Remaining: %u", PlayerDataContainer[player->GetGUID()].resources, PlayerDataContainer[player->GetGUID()].score, 
+                PlayerDataContainer[player->GetGUID()].towers);
+                player->ADD_GOSSIP_ITEM(GOSSIP_ICON_DOT, msg, GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF+101);
             }
             else
             {
@@ -434,8 +475,14 @@ public:
         {
             if (PlayerDataContainer[player->GetGUID()].resources >= 5)
             {
-                gameAI->Queue[NPC_TOTEM_TOWER] = 1;
-                PlayerDataContainer[player->GetGUID()].resources -= 5;
+                if (CanSpawnTower(2))
+                {
+                    gameAI->Queue[NPC_TOTEM_TOWER] = 1;
+                    PlayerDataContainer[player->GetGUID()].resources -= 5;
+                    PlayerDataContainer[player->GetGUID()].towers++;
+                }
+                else
+                    player->GetSession()->SendAreaTriggerMessage("Reached Max Tower Limit!");
             }
             else
                 player->GetSession()->SendAreaTriggerMessage("Not enough resources!");
@@ -471,6 +518,11 @@ public:
             summons.DespawnAll();
         }
 
+        void EnterCombat(Unit* /* target */) OVERRIDE
+        {
+            lightningBoltTimer = 4000;
+        }
+
         void JustDied(Unit* /*killer*/) OVERRIDE
         {
             summons.DespawnAll();
@@ -491,7 +543,7 @@ public:
             {
                 ChatHandler(attacker->ToPlayer()->GetSession()).SendSysMessage("You cannot attack Player Two's minion!");
                 DoCast(me, SPELL_RENEW, false);
-                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY() + 5, creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY() + 5, creatureSpawns[0].GetPositionZ(), creatureSpawns[0].GetOrientation());
             }
         }
 
@@ -512,7 +564,7 @@ public:
 
             if (lightningBoltTimer <= diff)
             {
-                DoCast(me->GetVictim(), SPELL_LIGHTNING_BOLT, true);
+                DoCast(me->GetVictim(), SPELL_LIGHTNING_BOLT);
                 lightningBoltTimer = 4000;
             }
             else
@@ -546,7 +598,10 @@ public:
                     if (i > 0)
                         continue;
 
-                    me->SummonCreature(itr->first, creatureSpawns[5].GetPositionX(), creatureSpawns[5].GetPositionY(), creatureSpawns[5].GetPositionZ(), creatureSpawns[5].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
+                    if (itr->first == NPC_TOTEM_TOWER)
+                        me->SummonCreature(itr->first, creatureSpawns[5].GetPositionX() - rand()%6, creatureSpawns[5].GetPositionY() + rand()%10, creatureSpawns[5].GetPositionZ(), creatureSpawns[5].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
+                    else
+                        me->SummonCreature(itr->first, creatureSpawns[3].GetPositionX(), creatureSpawns[3].GetPositionY(), creatureSpawns[3].GetPositionZ(), creatureSpawns[3].GetOrientation(), TEMPSUMMON_MANUAL_DESPAWN)->setFaction(me->getFaction());
                     UpdateCreatureQueueSize(itr->first);
                     i++;
                 }
@@ -571,13 +626,18 @@ public:
     {
         npc_player_two_unitsAI(Creature* creature) : ScriptedAI(creature) { }
 
+        uint32 timerHolyBolt;
+
         void Reset() OVERRIDE
         {
+            timerHolyBolt = urand(3000, 8000);
         }
 
         void JustDied(Unit* /*killer*/) OVERRIDE
         {
-            IncrementStats(urand(5, 20), urand(5, 15), 1);
+            IncrementPlayerData(urand(5, 20), urand(5, 15), 1);
+            if (me->GetEntry() == NPC_TOTEM_TOWER)
+                RemoveTower(2);
         }
 
         void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
@@ -591,15 +651,30 @@ public:
                 me->SetTarget(0);
                 me->GetMotionMaster()->Clear();
                 me->GetMotionMaster()->MovePoint(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY() - 5, creatureSpawns[0].GetPositionZ());
-                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[6].GetPositionX(), creatureSpawns[6].GetPositionY(), creatureSpawns[6].GetPositionZ(), creatureSpawns[6].GetOrientation());
+                attacker->ToPlayer()->TeleportTo(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY(), creatureSpawns[0].GetPositionZ(), creatureSpawns[0].GetOrientation());
             }
         }
 
         void UpdateAI(uint32 diff) OVERRIDE
         {
-            if (!UpdateVictim())
+            if (!UpdateVictim() && me->GetEntry() != NPC_TOTEM_TOWER)
+            {
                 me->GetMotionMaster()->MovePoint(0, creatureSpawns[0].GetPositionX(), creatureSpawns[0].GetPositionY(), creatureSpawns[0].GetPositionZ());
-            DoMeleeAttackIfReady();
+                return;
+            }
+
+            if (me->GetEntry() == NPC_TOTEM_TOWER)
+            {
+                if (timerHolyBolt <= diff)
+                {
+                    DoCast(me->GetVictim(), SPELL_HOLY_BOLT, true);
+                    timerHolyBolt = urand(3000, 8000);
+                }
+                else
+                    timerHolyBolt -= diff;
+            }
+            if (me->GetEntry() != NPC_TOTEM_TOWER)
+                DoMeleeAttackIfReady();
         }
     };
 
