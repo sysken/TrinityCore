@@ -215,7 +215,6 @@ public:
         {
             gameTimer = 1000;
             shadowBoltTimer = 4000;
-            summons.DespawnAll();
         }
 
         void DamageTaken(Unit* attacker, uint32 &damage) OVERRIDE
@@ -278,7 +277,7 @@ public:
         void DeleteCreatureFromQueue()
         {
             for (std::map<uint32, uint16>::const_iterator itr = Queue.begin(); itr != Queue.end(); ++itr)
-                if (itr->second == 0)
+                if (itr->second <= 0)
                     Queue.erase(itr);
         }
 
@@ -515,7 +514,6 @@ public:
         {
             gameTimer = urand(6000, 13000);
             lightningBoltTimer = 4000;
-            summons.DespawnAll();
         }
 
         void EnterCombat(Unit* /* target */) OVERRIDE
